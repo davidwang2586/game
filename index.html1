@@ -1,0 +1,299 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Screener Protocol v3.0</title>
+    <style>
+        body {
+            margin: 0;
+            background: #11141a;
+            color: #ffffff;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            overflow: hidden;
+            -webkit-tap-highlight-color: transparent;
+        }
+        #gameContainer {
+            position: relative;
+            box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6);
+            border-radius: 16px;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            background: #27ae60; /* Lush green lawn background */
+        }
+        #ui-overlay {
+            position: absolute;
+            top: 20px;
+            left: 0;
+            width: 100%;
+            text-align: center;
+            pointer-events: none;
+        }
+        .status-badge {
+            background: rgba(0, 0, 0, 0.75);
+            backdrop-filter: blur(8px);
+            -webkit-backdrop-filter: blur(8px);
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 700;
+            letter-spacing: 1px;
+            text-transform: uppercase;
+            display: inline-block;
+            border: 1px solid rgba(255, 255, 255, 0.15);
+        }
+        .impossible-alert {
+            color: #ff3333;
+            border-color: #ff3333;
+            box-shadow: 0 0 15px rgba(255, 51, 51, 0.4);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="gameContainer">
+        <div id="ui-overlay">
+            <div id="statusBadge" class="status-badge">Neighborhood Block: 0% Pitched</div>
+        </div>
+        <canvas id="gameCanvas" width="360" height="580"></canvas>
+    </div>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+const statusBadge = document.getElementById("statusBadge");
+
+// Game States
+let gameStarted = false;
+let gameOver = false;
+let won = false;
+
+// The Street / Lane Configurations
+const LANE_HEIGHT = 50;
+const START_Y = canvas.height - 40;
+const TARGET_Y = 60; // The ultimate final destination door
+
+// Salesman Profile (The Player)
+let salesman = { x: canvas.width / 2, y: START_Y, radius: 10, speed: 25 };
+
+// Obstacle (Homeowners) Configurations
+let lanes = [];
+const TOTAL_LANES = 8;
+
+function initLanes() {
+    lanes = [];
+    for (let i = 0; i < TOTAL_LANES; i++) {
+        let laneY = START_Y - 50 - (i * LANE_HEIGHT);
+        let speed = (Math.random() * 1.5 + 1.2) * (Math.random() < 0.5 ? 1 : -1);
+        
+        // Final lane (House #9) difficulty adjustments
+        if (i === TOTAL_LANES - 1) {
+            speed = 7.5; // Lightning fast pacing protector
+        }
+
+        lanes.push({
+            y: laneY,
+            speed: speed,
+            homeowners: [
+                { x: Math.random() * canvas.width, width: 45 },
+                { x: Math.random() * canvas.width + 140, width: 45 }
+            ]
+        });
+    }
+}
+
+function resetGame() {
+    salesman.x = canvas.width / 2;
+    salesman.y = START_Y;
+    gameOver = false;
+    won = false;
+    gameStarted = false;
+    initLanes();
+    statusBadge.innerText = "Neighborhood Block: 0% Pitched";
+    statusBadge.classList.remove("impossible-alert");
+}
+
+// Controller Actions
+function handleAction(dir) {
+    if (gameOver || won) {
+        resetGame();
+        return;
+    }
+    if (!gameStarted) {
+        gameStarted = true;
+    }
+
+    if (dir === 'up') salesman.y -= salesman.speed;
+    if (dir === 'down' && salesman.y + salesman.speed < canvas.height) salesman.y += salesman.speed;
+    if (dir === 'left' && salesman.x - salesman.speed > 0) salesman.x -= salesman.speed;
+    if (dir === 'right' && salesman.x + salesman.speed < canvas.width) salesman.x += salesman.speed;
+
+    // Progress updates
+    let progress = Math.min(100, Math.floor(((START_Y - salesman.y) / (START_Y - TARGET_Y)) * 100));
+    if (progress >= 85) {
+        statusBadge.innerText = "⚠️ WARNING: HIGH NO-SOLICITING ZONE ⚠️";
+        statusBadge.classList.add("impossible-alert");
+    } else {
+        statusBadge.innerText = `Neighborhood Block: ${progress}% Pitched`;
+    }
+
+    // Win condition trigger (virtually unreachable)
+    if (salesman.y <= TARGET_Y) {
+        won = true;
+    }
+}
+
+// Keyboards and Taps controls
+window.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowUp" || e.key === "w") handleAction('up');
+    if (e.key === "ArrowDown" || e.key === "s") handleAction('down');
+    if (e.key === "ArrowLeft" || e.key === "a") handleAction('left');
+    if (e.key === "ArrowRight" || e.key === "d") handleAction('right');
+});
+
+// Simple mobile touch tracking (Tap top half of screen = Go Up, bottom half = Go Down)
+canvas.addEventListener("touchstart", (e) => {
+    e.preventDefault();
+    let touchY = e.touches[0].clientY - canvas.getBoundingClientRect().top;
+    let touchX = e.touches[0].clientX - canvas.getBoundingClientRect().left;
+    
+    if (gameOver || won || !gameStarted) {
+        handleAction('up');
+        return;
+    }
+
+    // Basic grid logic quadrant navigation for mobile phone screens
+    if (touchY < salesman.y - 20) handleAction('up');
+    else if (touchY > salesman.y + 20) handleAction('down');
+    else if (touchX < salesman.x) handleAction('left');
+    else if (touchX > salesman.x) handleAction('right');
+}, {passive: false});
+
+function update() {
+    if (!gameStarted || gameOver || won) return;
+
+    // Animate Homeowners walking back and forth
+    lanes.forEach((lane, index) => {
+        lane.homeowners.forEach(owner => {
+            owner.x += lane.speed;
+            
+            // Loop boundaries
+            if (lane.speed > 0 && owner.x > canvas.width) owner.x = -owner.width;
+            if (lane.speed < 0 && owner.x + owner.width < 0) owner.x = canvas.width;
+
+            // Hitbox checks (Did the salesman hit a homeowner box?)
+            if (salesman.y > lane.y && salesman.y < lane.y + LANE_HEIGHT) {
+                if (salesman.x + salesman.radius > owner.x && salesman.x - salesman.radius < owner.x + owner.width) {
+                    gameOver = true;
+                }
+            }
+        });
+    });
+}
+
+function draw() {
+    // Draw Grass Base
+    ctx.fillStyle = "#27ae60";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // Draw sidewalks / lanes
+    for (let i = 0; i < TOTAL_LANES; i++) {
+        let yPos = START_Y - 50 - (i * LANE_HEIGHT);
+        ctx.fillStyle = (i === TOTAL_LANES - 1) ? "#2c3e50" : "#34495e"; // Dark driveway look
+        ctx.fillRect(0, yPos, canvas.width, LANE_HEIGHT);
+        
+        // Lane dividers lines
+        ctx.strokeStyle = "rgba(255, 255, 255, 0.1)";
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(0, yPos);
+        ctx.lineTo(canvas.width, yPos);
+        ctx.stroke();
+    }
+
+    // Draw Starting Safe Zone pavement
+    ctx.fillStyle = "#95a5a6";
+    ctx.fillRect(0, START_Y - 15, canvas.width, 60);
+
+    // Draw End Goal Target House
+    ctx.fillStyle = "#d35400";
+    ctx.fillRect(canvas.width / 2 - 40, 0, 80, TARGET_Y + 10);
+    // Door knob
+    ctx.fillStyle = "#f1c40f";
+    ctx.beginPath();
+    ctx.arc(canvas.width / 2 + 25, TARGET_Y - 15, 4, 0, Math.PI * 2);
+    ctx.fill();
+
+    // Draw Homeowners pacing lanes
+    lanes.forEach((lane, index) => {
+        lane.homeowners.forEach(owner => {
+            ctx.fillStyle = (index === TOTAL_LANES - 1) ? "#e74c3c" : "#f1c40f"; // Final house owners flash deep crimson red
+            
+            // Draw a crisp rounded panel rectangle representing the moving house occupants
+            ctx.beginPath();
+            ctx.roundRect(owner.x, lane.y + 12, owner.width, 26, 6);
+            ctx.fill();
+
+            // Text tag markers on inside lines
+            ctx.fillStyle = "#000";
+            ctx.font = "bold 9px sans-serif";
+            ctx.textAlign = "center";
+            ctx.fillText((index === TOTAL_LANES - 1) ? "KAREN" : "OWNER", owner.x + (owner.width/2), lane.y + 28);
+        });
+    });
+
+    // Draw Player Element (The Bright Cyan Blue Salesman)
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = "#00d2ff";
+    ctx.beginPath();
+    ctx.arc(salesman.x, salesman.y, salesman.radius, 0, Math.PI * 2);
+    ctx.fillStyle = "#00d2ff";
+    ctx.fill();
+    ctx.shadowBlur = 0; // reset outline
+
+    // Menu Screens States Engine
+    if (!gameStarted && !gameOver && !won) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.75)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#fff";
+        ctx.font = "bold 18px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("TAP SCREEN TO BEGIN PITCH", canvas.width / 2, canvas.height / 2 - 20);
+        ctx.font = "13px sans-serif";
+        ctx.fillStyle = "rgba(255,255,255,0.6)";
+        ctx.fillText("Navigate past the owners to the final door.", canvas.width / 2, canvas.height / 2 + 10);
+    }
+
+    if (gameOver) {
+        ctx.fillStyle = "rgba(0, 0, 0, 0.85)";
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.fillStyle = "#ff3333";
+        ctx.font = "bold 22px sans-serif";
+        ctx.textAlign = "center";
+        ctx.fillText("❌ NOT INTERESTED ❌", canvas.width / 2, canvas.height / 2 - 15);
+        ctx.fillStyle = "#fff";
+        ctx.font = "14px sans-serif";
+        ctx.fillText("A homeowner caught you. No soliciting!", canvas.width / 2, canvas.height / 2 + 15);
+        ctx.font = "bold 12px sans-serif";
+        ctx.fillText("TAP TO TRY NEXT STREET", canvas.width / 2, canvas.height / 2 + 70);
+    }
+}
+
+function loop() {
+    update();
+    draw();
+    requestAnimationFrame(loop);
+}
+
+initLanes();
+loop();
+</script>
+</body>
+</html>
